@@ -1,0 +1,13 @@
+name = "text-to-coda"
+main = "src/index.js"
+compatibility_date = "2022-06-22"
+node_compat = true
+
+[vars]
+DOC_ID = "fjzTtJl5Ah"
+TABLE_ID = "grid-Te4_AGhpYu"
+OUTBOUND_NUMBER = "+18178998501"
+
+# The necessary secrets are:
+# - CODA_API_KEY
+# Run `wrangler secret put <NAME> <VALUE>` for each of these
