@@ -51,9 +51,8 @@ const addCodaTodo = async (text, env) => {
 
 export default {
   async fetch(request, env) {
+    const OUTBOUND_PHONE = env.OUTBOUND_PHONE
     
-    const outboundNumber = env.OUTBOUND_NUMBER
-
     if (request.method != 'POST') {
       return new Response("Method Not Allowed", {
         status: 405
@@ -70,7 +69,7 @@ export default {
     const fromNumber = twilioObject.From;
 
     // Only allow texts from the users number
-    if (fromNumber != outboundNumber) {
+    if (fromNumber != OUTBOUND_PHONE) {
       return new Response("Forbidden", {
         status: 403
       })
