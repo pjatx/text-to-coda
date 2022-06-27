@@ -15,9 +15,11 @@ const addCodaTodo = async (text, env) => {
             'value': text
           },
           {
+            // Task Status
             'column': 'c-kN87N8b6Gr',
             'value': 'Backlog'
           },
+          // Task Category
           {
             'column': 'c-eDVIqu2xj_',
             'value': 'Inbox'
