@@ -11,4 +11,5 @@ TYPES_TABLE_ID = "grid-VtK-u41v14"
 # The necessary secrets are:
 # - CODA_API_KEY
 # - OUTBOUND_PHONE
+# - TWILIO_AUTH_TOKEN
 # Run `wrangler secret put <NAME>` for each of these
