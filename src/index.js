@@ -1,6 +1,13 @@
 const Fuse = require('fuse.js')
 
 const codaEP = 'https://coda.io/apis/v1'
+const delimiter = '-'
+
+// To dos:
+// - Refactor CODA API calls into a single function
+// - Better error handling
+// - Verify webhook is coming from Coda
+// - Automatically grab the columns from the task table and allow user to which columns they want to use
 
 // Parse message into it its components using a '-' delimiter
 const parseText = (text) => {
@@ -30,6 +37,7 @@ const determineTaskType = (taskTypes, searchString) => {
 
 const returnTaskTypes = async (env) => {
   const CODA_API_KEY = env.CODA_API_KEY
+  console.log(CODA_API_KEY)
   const docId = env.DOC_ID
   const typesTableId = env.TYPES_TABLE_ID
 
@@ -54,52 +62,48 @@ const returnTaskTypes = async (env) => {
   }
 }
 
-const addCodaTodo = async (text, env) => {
+const generateCodaData = async (message, env) => {
+  const simple = !message.includes('-')
+
+  let data = {rows: [{cells: []}]};
+
+  function Cell(columnName, column, value) {
+    this.column = column
+    this.value = value
+  }
+
+  if(simple) {
+    data.rows[0].cells.push(new Cell("Task Name", "c-70z9tdOF3c", message))
+    data.rows[0].cells.push(new Cell("Task Status", "c-kN87N8b6Gr", "Backlog"))
+    data.rows[0].cells.push(new Cell("Needs Triage", "c-2alHSrothg", true))
+  } else {
+    const taskTypeTable = await returnTaskTypes(env)
+    const taskTypes = taskTypeTable.items.map(item => item.name)
+    const parsedText = parseText(message)
+    const taskTypeMatch = determineTaskType(taskTypes, parsedText.taskType)
+  
+    if (!taskTypeMatch) {
+      return console.error("Sorry, I don't know that task type. Please try again.")
+    }
+
+    data.rows[0].cells.push(new Cell("Task Name", "c-70z9tdOF3c", parsedText.taskText))
+    data.rows[0].cells.push(new Cell("Task Status", "c-kN87N8b6Gr", "Backlog"))
+    data.rows[0].cells.push(new Cell("Task Type", "c-eDVIqu2xj_", taskTypeMatch))
+    data.rows[0].cells.push(new Cell("Predicted Duration", "c-L4lltHxi-h", parsedText.taskTime, ))
+    data.rows[0].cells.push(new Cell("Needs Triage", "c-2alHSrothg", true))
+  }
+
+  console.log(JSON.stringify(data))
+
+  return data
+}
+
+const addCodaTodo = async (message, env) => {
   const CODA_API_KEY = env.CODA_API_KEY
   const docId = env.DOC_ID
   const taskTableId = env.TASK_TABLE_ID
 
-  const taskTypeTable = await returnTaskTypes(env)
-  const taskTypes = taskTypeTable.items.map(item => item.name)
-
-  const parsedText = parseText(text)
-
-  const taskTypeMatch = determineTaskType(taskTypes, parsedText.taskType)
-  console.log(taskTypeMatch)
-  if (!taskTypeMatch) {
-    return new Response("Sorry, I don't know that task type. Please try again.")
-  }
-
-  let data = {
-    'rows': [
-      {
-        'cells': [
-          {
-            // Task Name
-            'column': 'c-70z9tdOF3c',
-            'value': parsedText.taskText
-          },
-          {
-            // Task Status
-            'column': 'c-kN87N8b6Gr',
-            'value': 'Backlog'
-          },
-          // Task Category
-          {
-            'column': 'c-eDVIqu2xj_',
-            'value': taskTypeMatch
-          },
-          // Predicted Duration
-          {
-            'column': 'c-L4lltHxi-h',
-            'value': parsedText.taskTime
-          },
-        ]
-      }
-    ]
-  }  
-
-  console.log(data)
+  const data = await generateCodaData(message, env)
 
   const url = `${codaEP}/docs/${docId}/tables/${taskTableId}/rows`
   const headers = {
@@ -151,6 +155,7 @@ export default {
     }
 
     const message = twilioObject.Body;
+
     const response = await addCodaTodo(message, env)
     console.log(JSON.stringify(response))
 
