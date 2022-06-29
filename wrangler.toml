@@ -5,9 +5,11 @@ node_compat = true
 
 [vars]
 DOC_ID = "fjzTtJl5Ah"
-TABLE_ID = "grid-Te4_AGhpYu"
+TASK_TABLE_ID = "grid-Te4_AGhpYu"
+TYPES_TABLE_ID = "grid-VtK-u41v14"
 
 # The necessary secrets are:
 # - CODA_API_KEY
 # - OUTBOUND_PHONE
-# Run `wrangler secret put <NAME> <VALUE>` for each of these
+# - TWILIO_AUTH_TOKEN
+# Run `wrangler secret put <NAME>` for each of these

@@ -24,13 +24,15 @@ Now, I can just text anything to my Twilio number and have it show up.
 1. Head over to Coda and generate an API Key from your Account Settings page. More information can be found in the docs: https://coda.io/developers/apis/v1#section/Introduction
 1. Grab the Doc ID that contains the table you want to add a row to. There's a handy DOC ID extractor you can use here: https://coda.io/developers/apis/v1#section/Using-the-API/Resource-IDs-and-Links
 1. Now grab your Table ID. You can find this by clicking the little eplises at the top of the table and select the "Copy Table ID" from the menu. 
+1. Finally, if you'd like to add a category field to each row you're adding create a new table with all the categories you want to choose from and use that table ID for the `TYPES_TABLE_ID`
 
 
 ### Configure your wrangler.toml, set secrets, and publish worker
 1. Find the `wrangler.toml` file and replace the doc and tables IDs with your own from the steps above. 
-1. Set the two secrets you'll need in Wrangler: 
+1. Set the secrets you'll need in Wrangler: 
     1. `CODA_API_KEY`
     2. `OUTBOUND_PHONE`
+    3. `TWILIO_AUTH_TOKEN`
 1. You can achieve this using the following command: `wrangler secret put <NAME>` - Wrangler will ask you for the value after you set the name. 
 1. Publish your Worker by running `wrangler publish`
 1. It should output the url of your worker in the command line. 
@@ -45,6 +47,14 @@ Edit the column ids and values in `index.js` to match your column ids and values
 
 ### Try it out
 Send any text to your Twilio number and you should get back a `Item successfully added!` reply if everything is working correctly. 
+
+### Advanced messages using a delimiter
+I've also added a bit of logic where you can use a delimiter to send a three part message.
+- Part 1: Task Category / Type
+- Part 2: Expected time needed to complete task (I have a dedicated column for this)
+- Part 3: Task Name
+
+You can set your desired delimiter by changing the `delimiter` variable at the top of the file. If you include at least 1 delmiter in your text, it will attempt to parse the message into different columns. If not, it will simply use the task name.
 
 ### Debug
 If it's not working, you can always run `wrangler tail` to see the log outputs of your worker. You can also run `wrangler dev` locally, run a n NGROK tunnel or something similar, and update your webhook destination URL to the NGROK url for local debugging. 
