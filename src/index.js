@@ -31,13 +31,11 @@ const determineTaskType = (taskTypes, searchString) => {
   const fuse = new Fuse(taskTypes, options)
   const result = fuse.search(searchString)
   const bestMatch = result.sort((a, b) => a.score - b.score)[0]
-  console.log(JSON.stringify(bestMatch))
   return bestMatch ? bestMatch.item : null
 }
 
 const returnTaskTypes = async (env) => {
   const CODA_API_KEY = env.CODA_API_KEY
-  console.log(CODA_API_KEY)
   const docId = env.DOC_ID
   const typesTableId = env.TYPES_TABLE_ID
 
@@ -92,9 +90,6 @@ const generateCodaData = async (message, env) => {
     data.rows[0].cells.push(new Cell("Predicted Duration", "c-L4lltHxi-h", parsedText.taskTime, ))
     data.rows[0].cells.push(new Cell("Needs Triage", "c-2alHSrothg", true))
   }
-
-  console.log(JSON.stringify(data))
-
   return data
 }
 
@@ -104,6 +99,7 @@ const addCodaTodo = async (message, env) => {
   const taskTableId = env.TASK_TABLE_ID
 
   const data = await generateCodaData(message, env)
+  console.log(JSON.stringify(data))
 
   const url = `${codaEP}/docs/${docId}/tables/${taskTableId}/rows`
   const headers = {
@@ -120,7 +116,6 @@ const addCodaTodo = async (message, env) => {
   try {
     const response = await fetch(url, init);
     const rj = await response.json()
-    console.log(rj)
     return rj
   } catch (e) {
     console.log(e)
