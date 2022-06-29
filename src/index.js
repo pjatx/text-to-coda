@@ -1,46 +1,13 @@
-const Fuse = require('fuse.js')
-
-const codaEP = 'https://coda.io/apis/v1'
-const delimiter = '-'
-
-const taskColumns = [
-  {
-    name: 'Task Name',
-    id: 'c-70z9tdOF3c',
-    defaultValue: null,
-    excludeFromSimpleMessageType: false,
-  },
-  {
-    name: 'Task Status',
-    id: 'c-kN87N8b6Gr',
-    defaultValue: 'Backlog',
-    excludeFromSimpleMessageType: false,
-  },
-  {
-    name: 'Needs Triage',
-    id: 'c-2alHSrothg',
-    defaultValue: true,
-    excludeFromSimpleMessageType: false,
-  },
-  {
-    name: 'Task Type',
-    id: 'c-eDVIqu2xj_',
-    defaultValue: null,
-    excludeFromSimpleMessageType: true,
-  },
-  {
-    name: 'Predicted Duration',
-    id: 'c-L4lltHxi-h',
-    defaultValue: null,
-    excludeFromSimpleMessageType: true,
-  },
-]
-
 // To dos:
 // - Refactor CODA API calls into a single function
 // - Better error handling
 // - Verify webhook is coming from Coda
 // - Automatically grab the columns from the task table and allow user to which columns they want to use
+
+const Fuse = require('fuse.js')
+
+const codaEP = 'https://coda.io/apis/v1'
+const delimiter = '-'
 
 // Parse message into it its components using a '-' delimiter
 const parseText = (text) => {
@@ -94,7 +61,7 @@ const returnTaskTypes = async (env) => {
 }
 
 const generateCodaData = async (message, env) => {
-  const simple = !message.includes('-')
+  const simple = !message.includes(delimiter)
 
   let data = {rows: [{cells: []}]};
 
