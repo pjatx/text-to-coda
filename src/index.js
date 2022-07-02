@@ -61,7 +61,7 @@ const returnTaskTypes = async (env) => {
 }
 
 const generateCodaData = async (message, env) => {
-  const simple = !message.includes(delimiter)
+  const simple = !(message.includes(delimiter) || message.includes('://'))
 
   let data = { rows: [{ cells: [] }] }
 
@@ -81,8 +81,11 @@ const generateCodaData = async (message, env) => {
     const taskTypeMatch = determineTaskType(taskTypes, parsedText.taskType)
 
     if (!taskTypeMatch) {
-      return console.error(
-        "Sorry, I don't know that task type. Please try again."
+      return new Response(
+        "Sorry, I don't know that task type. Please try again!",
+        {
+          status: 400,
+        }
       )
     }
 
