@@ -61,7 +61,9 @@ const returnTaskTypes = async (env) => {
 }
 
 const generateCodaData = async (message, env) => {
-  const simple = !(message.includes(delimiter) || message.includes('://'))
+  const simple = !message.includes(delimiter) || message.includes('://')
+
+  console.log('Incoming text:', message, 'simple:', simple)
 
   let data = { rows: [{ cells: [] }] }
 
