@@ -34,6 +34,24 @@ const determineTaskType = (taskTypes, searchString) => {
   return bestMatch ? bestMatch.item : null
 }
 
+const codaApiCall = async (url, method, headers, body = null) => {
+  const init = {
+    method: method,
+    headers: headers,
+  }
+
+  if (body) {
+    init.body = JSON.stringify(body)
+  }
+
+  try {
+    const response = await fetch(url, init)
+    return await response.json()
+  } catch (e) {
+    throw new Error('Oops! Something went wrong. Please try again later.')
+  }
+}
+
 const returnTaskTypes = async (env) => {
   const CODA_API_KEY = env.CODA_API_KEY
   const docId = env.DOC_ID
@@ -63,8 +81,6 @@ const returnTaskTypes = async (env) => {
 const generateCodaData = async (message, env) => {
   const simple = !message.includes(delimiter) || message.includes('://')
 
-  console.log('Incoming text:', message, 'simple:', simple)
-
   let data = { rows: [{ cells: [] }] }
 
   function Cell(columnName, column, value) {
@@ -75,7 +91,6 @@ const generateCodaData = async (message, env) => {
   if (simple) {
     data.rows[0].cells.push(new Cell('Task Name', 'c-70z9tdOF3c', message))
     data.rows[0].cells.push(new Cell('Task Status', 'c-kN87N8b6Gr', 'Today'))
-    // data.rows[0].cells.push(new Cell('Needs Triage', 'c-2alHSrothg', true))
   } else {
     const taskTypeTable = await returnTaskTypes(env)
     const taskTypes = taskTypeTable.items.map((item) => item.name)
@@ -83,12 +98,7 @@ const generateCodaData = async (message, env) => {
     const taskTypeMatch = determineTaskType(taskTypes, parsedText.taskType)
 
     if (!taskTypeMatch) {
-      return new Response(
-        "Sorry, I don't know that task type. Please try again!",
-        {
-          status: 400,
-        }
-      )
+      throw new Error("Sorry, I don't know that task type. Please try again!")
     }
 
     data.rows[0].cells.push(
@@ -107,66 +117,42 @@ const generateCodaData = async (message, env) => {
 }
 
 const addCodaTodo = async (message, env) => {
-  const CODA_API_KEY = env.CODA_API_KEY
-  const docId = env.DOC_ID
-  const taskTableId = env.TASK_TABLE_ID
-
   const data = await generateCodaData(message, env)
-  console.log(JSON.stringify(data))
 
-  const url = `${codaEP}/docs/${docId}/tables/${taskTableId}/rows`
+  const url = `${codaEP}/docs/${env.DOC_ID}/tables/${env.TASK_TABLE_ID}/rows`
   const headers = {
     'Content-Type': 'application/json',
-    Authorization: 'Bearer ' + CODA_API_KEY,
+    Authorization: 'Bearer ' + env.CODA_API_KEY,
   }
 
-  const init = {
-    body: JSON.stringify(data),
-    method: 'POST',
-    headers: headers,
-  }
-
-  try {
-    const response = await fetch(url, init)
-    const rj = await response.json()
-    return rj
-  } catch (e) {
-    console.log(e)
-    return new Response('Oops! Something went wrong. Please try again later.')
-  }
+  return await codaApiCall(url, 'POST', headers, data)
 }
 
 export default {
   async fetch(request, env) {
-    const OUTBOUND_PHONE = env.OUTBOUND_PHONE
-
     if (request.method != 'POST') {
       return new Response('Method Not Allowed', {
         status: 405,
       })
     }
 
-    // Get body of the request - will be text since it's URL encoded
     const data = await request.text()
-
-    // Decode URL
     const params = new URLSearchParams(data)
-    // Get query params and put in a JS object
     const twilioObject = Object.fromEntries(params.entries())
-    const fromNumber = twilioObject.From
 
-    // Only allow texts from the users number
-    if (fromNumber != OUTBOUND_PHONE) {
+    if (twilioObject.From != env.OUTBOUND_PHONE) {
       return new Response('Forbidden', {
         status: 403,
       })
     }
 
-    const message = twilioObject.Body
-
-    const response = await addCodaTodo(message, env)
-    console.log(JSON.stringify(response))
-
-    return new Response('Item successfully added!')
+    try {
+      const response = await addCodaTodo(twilioObject.Body, env)
+      return new Response('Item successfully added!')
+    } catch (error) {
+      return new Response(error.message, {
+        status: 500,
+      })
+    }
   },
 }
