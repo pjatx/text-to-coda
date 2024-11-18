@@ -138,7 +138,10 @@ const addCodaTodo = async (message, env) => {
 
 export default {
   async fetch(request, env) {
-    const OUTBOUND_PHONE = env.OUTBOUND_PHONE
+    // Parse allowed phone numbers from env variable (comma-separated string)
+    const ALLOWED_PHONES = env.OUTBOUND_PHONE.split(',').map((num) =>
+      num.trim()
+    )
 
     if (request.method != 'POST') {
       return new Response('Method Not Allowed', {
@@ -146,17 +149,13 @@ export default {
       })
     }
 
-    // Get body of the request - will be text since it's URL encoded
     const data = await request.text()
-
-    // Decode URL
     const params = new URLSearchParams(data)
-    // Get query params and put in a JS object
     const twilioObject = Object.fromEntries(params.entries())
     const fromNumber = twilioObject.From
 
-    // Only allow texts from the users number
-    if (fromNumber != OUTBOUND_PHONE) {
+    // Check if the incoming number is in the allowed numbers array
+    if (!ALLOWED_PHONES.includes(fromNumber)) {
       return new Response('Forbidden', {
         status: 403,
       })
