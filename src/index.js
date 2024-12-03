@@ -74,8 +74,7 @@ const generateCodaData = async (message, env) => {
 
   if (simple) {
     data.rows[0].cells.push(new Cell('Task Name', 'c-70z9tdOF3c', message))
-    data.rows[0].cells.push(new Cell('Task Status', 'c-kN87N8b6Gr', 'Today'))
-    // data.rows[0].cells.push(new Cell('Needs Triage', 'c-2alHSrothg', true))
+    data.rows[0].cells.push(new Cell('Task Status', 'c-kN87N8b6Gr', 'Inbox'))
   } else {
     const taskTypeTable = await returnTaskTypes(env)
     const taskTypes = taskTypeTable.items.map((item) => item.name)
