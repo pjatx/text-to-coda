@@ -5,9 +5,20 @@
 // - Automatically grab the columns from the task table and allow user to which columns they want to use
 
 const Fuse = require('fuse.js')
+const OpenAI = require('openai')
 
 const codaEP = 'https://coda.io/apis/v1'
 const delimiter = '-'
+
+// Near the top of the file, let's add a constant for our statuses
+// const TASK_STATUSES = {
+//   INBOX: '📥 Inbox',
+//   BACKLOG: '🥶 Backlog',
+//   THIS_WEEK: '📅 This Week',
+//   TODAY: '⭐️ Today',
+//   WAITING: '⌛ Waiting',
+//   COMPLETED: '✅ Completed',
+// }
 
 // Parse message into it its components using a '-' delimiter
 const parseText = (text) => {
@@ -60,8 +71,148 @@ const returnTaskTypes = async (env) => {
   }
 }
 
+// Add new function to fetch task statuses
+const returnTaskStatuses = async (env) => {
+  const CODA_API_KEY = env.CODA_API_KEY
+  const docId = env.DOC_ID
+  const statusTableId = env.STATUS_TABLE_ID
+
+  const url = `${codaEP}/docs/${docId}/tables/${statusTableId}/rows`
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${CODA_API_KEY}`,
+  }
+
+  const init = {
+    method: 'GET',
+    headers: headers,
+  }
+
+  try {
+    const response = await fetch(url, init)
+    const rj = await response.json()
+    console.log('Raw status response:', rj)
+
+    // Sort by Order column and create a map of status names
+    const statuses = rj.items
+      .sort(
+        (a, b) =>
+          a.values[env.STATUS_ORDER_COLUMN_ID] -
+          b.values[env.STATUS_ORDER_COLUMN_ID]
+      )
+      .reduce((acc, item) => {
+        // Use the name field directly since it contains the status with emoji
+        const statusName = item.name
+
+        // Convert status name to uppercase key without emojis and special characters
+        const key = statusName
+          .replace(/[^\w\s]/g, '')
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, '_')
+        acc[key] = statusName
+        return acc
+      }, {})
+
+    console.log('Processed statuses:', statuses)
+    return statuses
+  } catch (e) {
+    console.log('Error fetching statuses:', e)
+    // Return a basic status object as fallback
+    return {
+      INBOX: '📥 Inbox',
+    }
+  }
+}
+
+// Function to fetch sub-categories
+const returnSubCategories = async (env) => {
+  const url = `${codaEP}/docs/${env.DOC_ID}/tables/${env.SUB_CATEGORIES_TABLE_ID}/rows`
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${env.CODA_API_KEY}`,
+  }
+
+  try {
+    const response = await fetch(url, { headers })
+    const rj = await response.json()
+    console.log('Raw sub-categories response:', rj)
+
+    const categories = rj.items.map((item) => ({
+      name: item.name,
+      id: item.id,
+    }))
+    console.log('Processed sub-categories:', categories)
+    return categories
+  } catch (e) {
+    console.log('Error fetching sub-categories:', e)
+    return []
+  }
+}
+
+// Function to determine category using AI
+const determineCategory = async (taskDescription, subCategories, env) => {
+  const AI_GATEWAY_ENDPOINT = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/openai`
+
+  if (!subCategories.length) {
+    console.log('No categories available')
+    return { name: ' Uncategorized', id: 'fallback' }
+  }
+
+  const openai = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: AI_GATEWAY_ENDPOINT,
+  })
+
+  try {
+    const prompt = `Task: "${taskDescription}"
+
+Available categories:
+${subCategories.map((cat) => cat.name).join('\n')}
+
+Select the most appropriate category for this task from the list above. Reply with ONLY the exact category name, including emoji. If no category fits well, reply with " Uncategorized".`
+
+    console.log('Sending prompt to AI:', prompt)
+
+    const chatCompletion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 50,
+      temperature: 0.3,
+    })
+
+    const suggestedCategory = chatCompletion.choices[0].message.content.trim()
+    console.log('AI suggested category:', suggestedCategory)
+
+    // Find exact match from the AI's suggestion
+    const matchedCategory = subCategories.find(
+      (cat) => cat.name === suggestedCategory
+    )
+    console.log('Matched category:', matchedCategory)
+
+    // Find Uncategorized for fallback
+    const uncategorized = subCategories.find((cat) =>
+      cat.name.trim().toLowerCase().includes('uncategorized')
+    )
+
+    return (
+      matchedCategory ||
+      uncategorized || { name: ' Uncategorized', id: 'fallback' }
+    )
+  } catch (e) {
+    console.log('Error determining category:', e)
+    const uncategorized = subCategories.find((cat) =>
+      cat.name.trim().toLowerCase().includes('uncategorized')
+    )
+    return uncategorized || { name: ' Uncategorized', id: 'fallback' }
+  }
+}
+
+// Modify generateCodaData to include AI categorization
 const generateCodaData = async (message, env) => {
   const simple = !message.includes(delimiter) || message.includes('://')
+  const taskStatuses = await returnTaskStatuses(env)
+  const subCategories = await returnSubCategories(env)
 
   console.log('Incoming text:', message, 'simple:', simple)
 
@@ -72,36 +223,47 @@ const generateCodaData = async (message, env) => {
     this.value = value
   }
 
+  // Determine category using AI for both simple and complex messages
+  const taskCategory = await determineCategory(
+    simple ? message : parseText(message).taskText,
+    subCategories,
+    env
+  )
+
+  console.log('Selected task category:', taskCategory)
+
   if (simple) {
-    data.rows[0].cells.push(new Cell('Task Name', 'c-70z9tdOF3c', message))
-    data.rows[0].cells.push(new Cell('Task Status', 'c-kN87N8b6Gr', 'Inbox'))
+    data.rows[0].cells.push(
+      new Cell('Task Name', env.TASK_NAME_COLUMN_ID, message)
+    )
+    data.rows[0].cells.push(
+      new Cell('Task Status', env.TASK_STATUS_COLUMN_ID, taskStatuses.INBOX)
+    )
+    data.rows[0].cells.push(
+      new Cell('Sub Category', env.SUB_CATEGORY_COLUMN_ID, taskCategory.id)
+    )
   } else {
-    const taskTypeTable = await returnTaskTypes(env)
-    const taskTypes = taskTypeTable.items.map((item) => item.name)
     const parsedText = parseText(message)
-    const taskTypeMatch = determineTaskType(taskTypes, parsedText.taskType)
 
-    if (!taskTypeMatch) {
-      return new Response(
-        "Sorry, I don't know that task type. Please try again!",
-        {
-          status: 400,
-        }
+    data.rows[0].cells.push(
+      new Cell('Task Name', env.TASK_NAME_COLUMN_ID, parsedText.taskText)
+    )
+    data.rows[0].cells.push(
+      new Cell('Task Status', env.TASK_STATUS_COLUMN_ID, taskStatuses.INBOX)
+    )
+    data.rows[0].cells.push(
+      new Cell('Sub Category', env.SUB_CATEGORY_COLUMN_ID, taskCategory.id)
+    )
+    data.rows[0].cells.push(
+      new Cell(
+        'Predicted Duration',
+        env.PREDICTED_DURATION_COLUMN_ID,
+        parsedText.taskTime
       )
-    }
-
-    data.rows[0].cells.push(
-      new Cell('Task Name', 'c-70z9tdOF3c', parsedText.taskText)
     )
-    data.rows[0].cells.push(new Cell('Task Status', 'c-kN87N8b6Gr', 'Backlog'))
-    data.rows[0].cells.push(
-      new Cell('Task Type', 'c-eDVIqu2xj_', taskTypeMatch)
-    )
-    data.rows[0].cells.push(
-      new Cell('Predicted Duration', 'c-L4lltHxi-h', parsedText.taskTime)
-    )
-    data.rows[0].cells.push(new Cell('Needs Triage', 'c-2alHSrothg', true))
   }
+
+  console.log('Full generated data:', JSON.stringify(data, null, 2))
   return data
 }
 

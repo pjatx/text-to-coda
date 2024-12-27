@@ -4,12 +4,26 @@ compatibility_date = "2022-06-22"
 node_compat = true
 
 [vars]
+CLOUDFLARE_ACCOUNT_ID = "25f5a92f890aa03cb9b24a887d76ef7e"  
+AI_GATEWAY_ID = "openai-gateway" 
 DOC_ID = "sjaB3PxyeS"
+
+# Table IDs
 TASK_TABLE_ID = "grid-3l8w7D_AVl"
 TYPES_TABLE_ID = "grid-57eD53TLPI"
+STATUS_TABLE_ID = "grid-jNfiLW1qmf"
+SUB_CATEGORIES_TABLE_ID = "grid-iKGqZreh-U"
+
+# Column IDs
+TASK_NAME_COLUMN_ID = "c-70z9tdOF3c"
+TASK_STATUS_COLUMN_ID = "c-84_fOWBZLB"
+SUB_CATEGORY_COLUMN_ID = "c-cjbFAIHJPU"
+PREDICTED_DURATION_COLUMN_ID = "c-L4lltHxi-h"
+STATUS_ORDER_COLUMN_ID = "c-8GSqS1pH-a"
 
 # The necessary secrets are:
 # - CODA_API_KEY
 # - OUTBOUND_PHONE
 # - TWILIO_AUTH_TOKEN
+# - OPENAI_API_KEY
 # Run `wrangler secret put <NAME>` for each of these
