@@ -288,7 +288,10 @@ const generateCodaData = async (processedTask, env) => {
 
   log('info', 'Processing task', { task: processedTask })
 
-  let data = { rows: [{ cells: [] }] }
+  let data = {
+    rows: [{ cells: [] }],
+    categoryName: null, // Add this to store the category name
+  }
 
   function Cell(columnName, column, value) {
     this.column = column
@@ -303,9 +306,11 @@ const generateCodaData = async (processedTask, env) => {
   )
   const duration = await estimateTaskDuration(processedTask.text, env)
 
+  // Store the category name
+  data.categoryName = taskCategory.name
+
   // Build the cells array with all our data
   const cells = [
-    // Required fields
     new Cell('Task Name', env.TASK_NAME_COLUMN_ID, processedTask.text),
     new Cell(
       'Task Status',
@@ -316,7 +321,6 @@ const generateCodaData = async (processedTask, env) => {
     new Cell('Predicted Duration', env.PREDICTED_DURATION_COLUMN_ID, duration),
   ]
 
-  // Optional fields based on processed task data
   if (processedTask.dueDate) {
     cells.push(
       new Cell('Due Date', env.DUE_DATE_COLUMN_ID, processedTask.dueDate)
@@ -339,17 +343,8 @@ const generateCodaData = async (processedTask, env) => {
 const addCodaTodo = async (message, env) => {
   let data
   try {
-    // Process the message for shortcuts and dates
     const processedTask = processTaskText(message)
-    log('info', 'Processed message', { processedTask })
-
-    // Generate the Coda data
     data = await generateCodaData(processedTask, env)
-    
-    log('info', 'Sending to Coda', { 
-      url: `${codaEP}/docs/${env.DOC_ID}/tables/${env.TASK_TABLE_ID}/rows`,
-      data: JSON.stringify(data, null, 2)
-    })
 
     // Send to Coda
     const url = `${codaEP}/docs/${env.DOC_ID}/tables/${env.TASK_TABLE_ID}/rows`
@@ -367,7 +362,9 @@ const addCodaTodo = async (message, env) => {
     if (!response.ok) {
       const errorData = await response.json()
       throw new Error(
-        `Coda API error: ${response.status} ${response.statusText}\nDetails: ${JSON.stringify(errorData, null, 2)}`
+        `Coda API error: ${response.status} ${
+          response.statusText
+        }\nDetails: ${JSON.stringify(errorData, null, 2)}`
       )
     }
 
@@ -377,12 +374,31 @@ const addCodaTodo = async (message, env) => {
       status: 'success',
     })
 
-    return result
+    // Store both category name and ID from the generateCodaData response
+    const categoryCell = data.rows[0].cells.find(
+      (c) => c.column === env.SUB_CATEGORY_COLUMN_ID
+    )
+
+    // Return more details about what was created
+    return {
+      success: true,
+      // Use the category name from the taskCategory object in generateCodaData
+      category: data.categoryName, // This will be added by generateCodaData
+      status: data.rows[0].cells.find(
+        (c) => c.column === env.TASK_STATUS_COLUMN_ID
+      )?.value,
+      duration: data.rows[0].cells.find(
+        (c) => c.column === env.PREDICTED_DURATION_COLUMN_ID
+      )?.value,
+      dueDate: data.rows[0].cells.find(
+        (c) => c.column === env.DUE_DATE_COLUMN_ID
+      )?.value,
+    }
   } catch (e) {
     log('error', 'Failed to add task to Coda', {
       error: e.message,
       stack: e.stack,
-      requestData: data
+      requestData: data,
     })
     throw e
   }
@@ -452,7 +468,9 @@ const checkRateLimit = async (phoneNumber, env) => {
       return false
     }
 
-    await env.text_to_coda.put(key, JSON.stringify(requests), { expirationTtl: 3600 })
+    await env.text_to_coda.put(key, JSON.stringify(requests), {
+      expirationTtl: 3600,
+    })
     return true
   } catch (e) {
     console.error('Rate limit error:', e)
@@ -510,13 +528,16 @@ const processTaskText = (text) => {
   if (date) {
     // Format date as ISO-8601 string with timezone offset
     taskData.dueDate = date.toISOString().split('.')[0] + 'Z'
-    log('info', 'Parsed date', { 
+    log('info', 'Parsed date', {
       originalDate: date,
-      formattedDate: taskData.dueDate 
+      formattedDate: taskData.dueDate,
     })
-    
+
     // Remove the parsed date text from the task description
-    const dateText = taskData.text.match(/\b(today|tomorrow|next|this|in|on|at|by)\b.*$/i)?.[0] || ''
+    const dateText =
+      taskData.text.match(
+        /\b(today|tomorrow|next|this|in|on|at|by)\b.*$/i
+      )?.[0] || ''
     if (dateText) {
       taskData.text = taskData.text.replace(dateText, '').trim()
     }
@@ -587,7 +608,12 @@ export default {
 
     try {
       if (request.method !== 'POST') {
-        throw new Error('Method not allowed')
+        return new Response(
+          'Sorry, this endpoint only accepts text messages.',
+          {
+            status: 405,
+          }
+        )
       }
 
       const data = await request.text()
@@ -603,39 +629,80 @@ export default {
       )
 
       if (!isValidWebhook) {
-        throw new Error('Invalid webhook signature')
+        return new Response('Message validation failed. Please try again.', {
+          status: 403,
+        })
       }
 
-      // Get the message text and phone number
       const message = twilioObject.Body
       const fromNumber = twilioObject.From
 
       if (!message || typeof message !== 'string') {
-        throw new Error('Invalid message format')
-      }
-
-      // Re-enable rate limiting
-      if (!(await checkRateLimit(fromNumber, env))) {
-        return new Response('Too many requests. Please try again later.', { 
-          status: 429 
+        return new Response('Please send a text message to create a task.', {
+          status: 400,
         })
       }
 
-      // Add task to Coda with the message
-      const response = await addCodaTodo(message, env)
+      if (!(await checkRateLimit(fromNumber, env))) {
+        return new Response(
+          "You've added quite a few tasks recently! Please wait a bit before adding more.",
+          { status: 429 }
+        )
+      }
 
-      // Record metrics
+      const response = await addCodaTodo(message, env)
       MetricsCollector.recordTask(
         response.category,
         response.status,
         Date.now() - startTime
       )
 
-      return new Response('Task added successfully!')
+      // Create a friendly success message
+      let successMsg = '✅ Task added!'
+      if (response.category) {
+        successMsg += `\n📁 Category: ${response.category}`
+      }
+      if (response.duration) {
+        successMsg += `\n⏱️ Est. time: ${response.duration}`
+      }
+      if (response.status && response.status !== '📥 Inbox') {
+        successMsg += `\n📋 Status: ${response.status}`
+      }
+      if (response.dueDate) {
+        const date = new Date(response.dueDate)
+        successMsg += `\n📅 Due: ${date.toLocaleDateString()}`
+      }
+
+      return new Response(successMsg)
     } catch (error) {
       MetricsCollector.recordError(error)
       log('error', error.message, { stack: error.stack })
-      return new Response('An error occurred', { status: 500 })
+
+      // Provide more helpful error messages based on the type of error
+      if (error.message.includes('rate limit')) {
+        return new Response(
+          'Too many requests. Please try again in a few minutes.',
+          {
+            status: 429,
+          }
+        )
+      } else if (error.message.includes('API key')) {
+        return new Response(
+          'System is temporarily unavailable. Please try again later.',
+          {
+            status: 500,
+          }
+        )
+      } else if (error.message.includes('Invalid webhook')) {
+        return new Response('Message validation failed. Please try again.', {
+          status: 403,
+        })
+      } else {
+        return new Response(
+          'Sorry, something went wrong. Please try again in a few minutes.',
+          { status: 500 }
+        )
+      }
     } finally {
       MetricsCollector.recordProcessingTime(startTime)
     }
