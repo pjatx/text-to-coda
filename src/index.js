@@ -175,7 +175,7 @@ Select the most appropriate category for this task from the list above. Reply wi
     console.log('Sending prompt to AI:', prompt)
 
     const chatCompletion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: env.AI_MODEL_NAME,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 50,
       temperature: 0.3,
@@ -208,7 +208,78 @@ Select the most appropriate category for this task from the list above. Reply wi
   }
 }
 
-// Modify generateCodaData to include AI categorization
+// Add a new function for duration estimation
+const estimateTaskDuration = async (taskDescription, env) => {
+  const AI_GATEWAY_ENDPOINT = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/openai`
+
+  const openai = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: AI_GATEWAY_ENDPOINT,
+  })
+
+  try {
+    const prompt = `Task: "${taskDescription}"
+
+Estimate how long this task will take. Maximum duration is 2 hours.
+Reply with ONLY the duration in one of these formats:
+- "15 mins" for quick tasks
+- "30 mins" for medium tasks
+- "1 hr" for longer tasks
+- "1 hr 30 mins" for complex tasks
+- "2 hr" for very complex tasks
+
+Guidelines:
+- Most simple tasks should be 15 mins
+- Never exceed 2 hours
+- Use 15 min increments only (15, 30, 45 mins)
+- For tasks that might take longer than 2 hours, just return "2 hr"`
+
+    console.log('Sending duration prompt to AI:', prompt)
+
+    const chatCompletion = await openai.chat.completions.create({
+      model: env.AI_MODEL_NAME,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 50,
+      temperature: 0.3,
+    })
+
+    const estimatedDuration = chatCompletion.choices[0].message.content.trim()
+
+    // Validate the response format and cap at 2 hours
+    const durationRegex = /^((\d+)\s*mins?|(\d+)\s*hr(\s+(\d+)\s*mins?)?)$/i
+    if (!durationRegex.test(estimatedDuration)) {
+      console.log(
+        'Invalid duration format, falling back to default:',
+        estimatedDuration
+      )
+      return '15 mins'
+    }
+
+    // Parse the duration and ensure it doesn't exceed 2 hours
+    const hrMatch = estimatedDuration.match(/(\d+)\s*hr/i)
+    const minsMatch = estimatedDuration.match(/(\d+)\s*mins?/i)
+
+    const hours = hrMatch ? parseInt(hrMatch[1]) : 0
+    const mins = minsMatch ? parseInt(minsMatch[1]) : 0
+    const totalMins = hours * 60 + mins
+
+    if (totalMins > 120) {
+      console.log(
+        'Duration exceeds 2 hours, capping at 2 hr:',
+        estimatedDuration
+      )
+      return '2 hr'
+    }
+
+    console.log('AI estimated duration:', estimatedDuration)
+    return estimatedDuration
+  } catch (e) {
+    console.log('Error estimating duration:', e)
+    return '15 mins' // Default fallback
+  }
+}
+
+// Modify generateCodaData to include duration estimation
 const generateCodaData = async (message, env) => {
   const simple = !message.includes(delimiter) || message.includes('://')
   const taskStatuses = await returnTaskStatuses(env)
@@ -223,14 +294,20 @@ const generateCodaData = async (message, env) => {
     this.value = value
   }
 
-  // Determine category using AI for both simple and complex messages
+  // Get category and duration estimates
   const taskCategory = await determineCategory(
     simple ? message : parseText(message).taskText,
     subCategories,
     env
   )
 
+  const duration = simple
+    ? await estimateTaskDuration(message, env)
+    : parsedText.taskTime ||
+      (await estimateTaskDuration(parsedText.taskText, env))
+
   console.log('Selected task category:', taskCategory)
+  console.log('Estimated duration:', duration)
 
   if (simple) {
     data.rows[0].cells.push(
@@ -241,6 +318,9 @@ const generateCodaData = async (message, env) => {
     )
     data.rows[0].cells.push(
       new Cell('Sub Category', env.SUB_CATEGORY_COLUMN_ID, taskCategory.id)
+    )
+    data.rows[0].cells.push(
+      new Cell('Predicted Duration', env.PREDICTED_DURATION_COLUMN_ID, duration)
     )
   } else {
     const parsedText = parseText(message)
@@ -255,11 +335,7 @@ const generateCodaData = async (message, env) => {
       new Cell('Sub Category', env.SUB_CATEGORY_COLUMN_ID, taskCategory.id)
     )
     data.rows[0].cells.push(
-      new Cell(
-        'Predicted Duration',
-        env.PREDICTED_DURATION_COLUMN_ID,
-        parsedText.taskTime
-      )
+      new Cell('Predicted Duration', env.PREDICTED_DURATION_COLUMN_ID, duration)
     )
   }
 

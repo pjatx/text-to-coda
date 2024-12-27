@@ -21,6 +21,9 @@ SUB_CATEGORY_COLUMN_ID = "c-cjbFAIHJPU"
 PREDICTED_DURATION_COLUMN_ID = "c-L4lltHxi-h"
 STATUS_ORDER_COLUMN_ID = "c-8GSqS1pH-a"
 
+# AI Config Params
+AI_MODEL_NAME = "gpt-4o-mini"
+
 # The necessary secrets are:
 # - CODA_API_KEY
 # - OUTBOUND_PHONE
