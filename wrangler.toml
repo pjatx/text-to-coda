@@ -20,6 +20,7 @@ TASK_STATUS_COLUMN_ID = "c-84_fOWBZLB"
 SUB_CATEGORY_COLUMN_ID = "c-cjbFAIHJPU"
 PREDICTED_DURATION_COLUMN_ID = "c-L4lltHxi-h"
 STATUS_ORDER_COLUMN_ID = "c-8GSqS1pH-a"
+DUE_DATE_COLUMN_ID = "c-_2-uurwp_b"
 
 # AI Config Params
 AI_MODEL_NAME = "gpt-4o-mini"
@@ -30,3 +31,7 @@ AI_MODEL_NAME = "gpt-4o-mini"
 # - TWILIO_AUTH_TOKEN
 # - OPENAI_API_KEY
 # Run `wrangler secret put <NAME>` for each of these
+
+kv_namespaces = [
+  { binding = "text_to_coda", id = "434769b48eae45cf8d0afa45735e49e9" }
+]

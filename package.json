@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "body-parser": "^1.20.0",
+    "chrono-node": "^2.7.7",
     "fuse.js": "^6.6.2",
     "openai": "^4.77.0"
   }
